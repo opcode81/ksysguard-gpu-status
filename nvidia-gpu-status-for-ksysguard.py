@@ -22,23 +22,47 @@ def break_cmd(cmd):
     return cmd.split('_', maxsplit=1)
 
 
+class GPURenamer:
+    def __init__(self):
+        self.id2name = {}
+        self.name2id = {}
+        
+    def name(self, identifier):
+        name = self.id2name.get(identifier)
+        if name is None:
+            name = "GPU%d" % len(self.id2name)
+            self.id2name[identifier] = name
+            self.name2id[name] = identifier
+        return name
+    
+    def identifier(self, name):
+        return self.name2id[name]
+
+
 if __name__ == '__main__':
     print('ksysguardd 1.2.0')
     keys = supported_query.keys()
+    names_mapped = False
+    renamer = GPURenamer()
     while True:
         cmd = input('ksysguardd> ')
         info = ET.fromstring(subprocess.check_output(['nvidia-smi', '-q', '-x']))
+        if not names_mapped:
+            names_mapped = True
+            for gpu in info.findall('gpu'):
+                renamer.name(gpu.attrib['id'])
         if cmd == 'monitors':
             for gpu in info.findall('gpu'):
                 gpu_id = gpu.attrib['id']
                 for key in keys:
-                    print(f'{make_cmd(gpu_id, key)}\tfloat')
+                    print(f'{make_cmd(renamer.name(gpu_id), key)}\tfloat')
         else:
-            gpu_id, key = break_cmd(cmd)
+            gpu_name, key = break_cmd(cmd)
+            gpu_id = renamer.identifier(gpu_name)
             gpu = info.find(f'.//gpu/[@id="{gpu_id}"]')
             if key.endswith('?'):
                 cmd_info = supported_query[key[:-1]]
-                print(f'{make_cmd(gpu_id, key[:-1])}\t{cmd_info.min(gpu)}\t{cmd_info.max(gpu)}')
+                print(f'{make_cmd(gpu_name, key[:-1])}\t{cmd_info.min(gpu)}\t{cmd_info.max(gpu)}')
             else:
                 result = supported_query[key].current(gpu)
                 print(result)
